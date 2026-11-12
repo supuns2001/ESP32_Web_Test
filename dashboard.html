@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Multi-Device MQTT Dashboard</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            background-color: #f0f2f5;
+            color: #333;
+            padding: 30px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        h1 {
+            color: #1a1a2e;
+            font-size: 26px;
+            margin-bottom: 8px;
+        }
+
+        .server-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #ffffff;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #f39c12;
+        }
+
+        .dot.connected {
+            background-color: #2ecc71;
+        }
+
+        .dot.error {
+            background-color: #e74c3c;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .card {
+            background: #ffffff;
+            border-radius: 14px;
+            padding: 22px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            border: 1px solid #e1e8ed;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #f0f2f5;
+        }
+
+        .device-title {
+            font-weight: 700;
+            color: #2c3e50;
+            font-size: 16px;
+        }
+
+        .badge {
+            background: #e8f8f0;
+            color: #27ae60;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .temp-display {
+            text-align: center;
+            margin: 18px 0;
+        }
+
+        .temp-value {
+            font-size: 40px;
+            font-weight: 800;
+            color: #34495e;
+        }
+
+        .temp-unit {
+            font-size: 20px;
+            color: #7f8c8d;
+            font-weight: 400;
+        }
+
+        .actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            border: none;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-on {
+            background-color: #2ecc71;
+            color: #ffffff;
+        }
+
+        .btn-on:hover {
+            background-color: #27ae60;
+        }
+
+        .btn-off {
+            background-color: #e74c3c;
+            color: #ffffff;
+        }
+
+        .btn-off:hover {
+            background-color: #c0392b;
+        }
+
+        .last-seen {
+            font-size: 11px;
+            color: #95a5a6;
+            text-align: center;
+            margin-top: 12px;
+        }
+
+        #empty-notice {
+            text-align: center;
+            padding: 50px 20px;
+            color: #7f8c8d;
+            background: #ffffff;
+            border-radius: 12px;
+            border: 2px dashed #dcdde1;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1>⚡ ESP32 Multi-Device IoT Dashboard</h1>
+            <div class="server-status">
+                <span class="dot" id="status-dot"></span>
+                <span id="status-text">Connecting to Secure Broker...</span>
+            </div>
+        </header>
+
+        <div id="empty-notice">
+            <p><strong>Waiting for devices to report...</strong></p>
+            <p style="font-size: 13px; margin-top: 5px;">Power on your ESP32 boards. They will appear here automatically via Wildcard subscription.</p>
+        </div>
+
+        <div class="grid" id="devices-container"></div>
+    </div>
+
+    <script>
+        // Connect via WSS to VPS MQTT Broker
+        const brokerUrl = "wss://iot.techknowlk.com:443";
+        const options = {
+            username: "esp_test_user",
+            password: "Supun@2001"
+        };
+
+        const client = mqtt.connect(brokerUrl, options);
+
+        const statusDot = document.getElementById("status-dot");
+        const statusText = document.getElementById("status-text");
+        const devicesContainer = document.getElementById("devices-container");
+        const emptyNotice = document.getElementById("empty-notice");
+
+        // Set to track discovered devices
+        const discoveredDevices = new Set();
+
+        client.on("connect", () => {
+            statusDot.className = "dot connected";
+            statusText.innerText = "Connected to VPS Broker (wss)";
+            
+            // Subscribe to all device telemetries using '+' wildcard
+            const wildcardTopic = "supun/esp32/+/telemetry";
+            client.subscribe(wildcardTopic, (err) => {
+                if (!err) {
+                    console.log("Subscribed to wildcard:", wildcardTopic);
+                }
+            });
+        });
+
+        client.on("message", (topic, payload) => {
+            // topic format: "supun/esp32/ESP32_XXXX/telemetry"
+            const parts = topic.split("/");
+            if (parts.length >= 4 && parts[3] === "telemetry") {
+                const deviceId = parts[2];
+                let temperature = "--";
+
+                try {
+                    const data = JSON.parse(payload.toString());
+                    temperature = data.temperature !== undefined ? data.temperature : "--";
+                } catch (e) {
+                    temperature = payload.toString();
+                }
+
+                updateDeviceCard(deviceId, temperature);
+            }
+        });
+
+        client.on("error", (err) => {
+            statusDot.className = "dot error";
+            statusText.innerText = "Broker connection failed";
+            console.error("MQTT Error:", err);
+        });
+
+        function updateDeviceCard(deviceId, temp) {
+            emptyNotice.style.display = "none";
+
+            const now = new Date().toLocaleTimeString();
+
+            if (!discoveredDevices.has(deviceId)) {
+                discoveredDevices.add(deviceId);
+
+                const cardHtml = `
+                    <div class="card" id="card-${deviceId}">
+                        <div class="card-header">
+                            <span class="device-title">📟 ${deviceId}</span>
+                            <span class="badge">Online</span>
+                        </div>
+                        <div class="temp-display">
+                            <span class="temp-value" id="temp-${deviceId}">${temp}</span>
+                            <span class="temp-unit">°C</span>
+                        </div>
+                        <div class="actions">
+                            <button class="btn-on" onclick="sendDeviceCommand('${deviceId}', 'LED_ON')">LED ON</button>
+                            <button class="btn-off" onclick="sendDeviceCommand('${deviceId}', 'LED_OFF')">LED OFF</button>
+                        </div>
+                        <div class="last-seen">Last update: <span id="time-${deviceId}">${now}</span></div>
+                    </div>
+                `;
+                devicesContainer.insertAdjacentHTML("beforeend", cardHtml);
+            } else {
+                const tempEl = document.getElementById(`temp-${deviceId}`);
+                const timeEl = document.getElementById(`time-${deviceId}`);
+                if (tempEl) tempEl.innerText = temp;
+                if (timeEl) timeEl.innerText = now;
+            }
+        }
+
+        function sendDeviceCommand(deviceId, command) {
+            const topic = `supun/esp32/${deviceId}/command`;
+            if (client.connected) {
+                client.publish(topic, command);
+                console.log(`[${deviceId}] Command sent -> ${topic} : ${command}`);
+            } else {
+                alert("Broker not connected!");
+            }
+        }
+    </script>
+</body>
+</html>
