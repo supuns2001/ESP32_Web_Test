@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 Multi-Device MQTT Dashboard</title>
+    <title>ESP32 Multi-Device IoT Dashboard</title>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         * {
@@ -14,9 +14,9 @@
         }
 
         body {
-            background-color: #f0f2f5;
-            color: #333;
-            padding: 30px 20px;
+            background-color: #f4f6fa;
+            color: #2c3e50;
+            padding: 30px 15px;
         }
 
         .container {
@@ -33,6 +33,10 @@
             color: #1a1a2e;
             font-size: 26px;
             margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
 
         .server-status {
@@ -42,19 +46,21 @@
             background: #ffffff;
             padding: 6px 16px;
             border-radius: 20px;
-            font-size: 14px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            font-size: 13px;
+            font-weight: 500;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
         }
 
         .dot {
-            width: 10px;
-            height: 10px;
+            width: 9px;
+            height: 9px;
             border-radius: 50%;
             background-color: #f39c12;
         }
 
         .dot.connected {
             background-color: #2ecc71;
+            box-shadow: 0 0 8px rgba(46, 204, 113, 0.6);
         }
 
         .dot.error {
@@ -63,116 +69,213 @@
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 24px;
             margin-top: 20px;
         }
 
         .card {
             background: #ffffff;
-            border-radius: 14px;
-            padding: 22px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            border: 1px solid #e1e8ed;
+            border-radius: 18px;
+            padding: 24px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.04);
+            border: 1px solid #eef2f6;
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+            position: relative;
+            overflow: hidden;
         }
 
         .card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+            transform: translateY(-3px);
+            box-shadow: 0 14px 30px rgba(0, 0, 0, 0.08);
         }
 
         .card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #f0f2f5;
+            margin-bottom: 18px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #f1f4f8;
         }
 
         .device-title {
             font-weight: 700;
-            color: #2c3e50;
-            font-size: 16px;
+            color: #1e293b;
+            font-size: 15px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .badge {
             background: #e8f8f0;
-            color: #27ae60;
+            color: #10b981;
             padding: 3px 10px;
             border-radius: 12px;
             font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.5px;
         }
 
-        .temp-display {
-            text-align: center;
-            margin: 18px 0;
+        /* Creative Bulb & Status Section */
+        .visual-display {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f8fafc;
+            border-radius: 14px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            border: 1px solid #edf2f7;
+        }
+
+        .temp-section {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .temp-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: 600;
+            color: #64748b;
+            letter-spacing: 0.5px;
+        }
+
+        .temp-value-wrap {
+            display: flex;
+            align-items: baseline;
+            gap: 2px;
         }
 
         .temp-value {
-            font-size: 40px;
+            font-size: 34px;
             font-weight: 800;
-            color: #34495e;
+            color: #0f172a;
         }
 
         .temp-unit {
-            font-size: 20px;
-            color: #7f8c8d;
-            font-weight: 400;
+            font-size: 18px;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+
+        /* Glowing Bulb Icon */
+        .bulb-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .bulb-circle {
+            width: 58px;
+            height: 58px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #e2e8f0;
+            color: #94a3b8;
+            font-size: 28px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid #cbd5e1;
+        }
+
+        /* Bulb ON state - glowing neon amber */
+        .bulb-circle.is-on {
+            background: #fef3c7;
+            border-color: #f59e0b;
+            color: #f59e0b;
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.5), inset 0 0 10px rgba(245, 158, 11, 0.2);
+            animation: pulse-glow 2s infinite alternate;
+        }
+
+        @keyframes pulse-glow {
+            0% { box-shadow: 0 0 14px rgba(245, 158, 11, 0.4); }
+            100% { box-shadow: 0 0 26px rgba(245, 158, 11, 0.7); }
+        }
+
+        .bulb-pill {
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 10px;
+            background: #e2e8f0;
+            color: #64748b;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+        }
+
+        .bulb-pill.is-on {
+            background: #dcfce7;
+            color: #15803d;
+            box-shadow: 0 1px 3px rgba(22, 163, 74, 0.2);
         }
 
         .actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-top: 15px;
+            gap: 12px;
+            margin-top: 12px;
         }
 
         button {
             border: none;
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
         }
 
         .btn-on {
-            background-color: #2ecc71;
+            background-color: #10b981;
             color: #ffffff;
+            box-shadow: 0 4px 10px rgba(16, 185, 129, 0.2);
         }
 
         .btn-on:hover {
-            background-color: #27ae60;
+            background-color: #059669;
+            transform: translateY(-1px);
         }
 
         .btn-off {
-            background-color: #e74c3c;
+            background-color: #ef4444;
             color: #ffffff;
+            box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);
         }
 
         .btn-off:hover {
-            background-color: #c0392b;
+            background-color: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        button:active {
+            transform: scale(0.97);
         }
 
         .last-seen {
             font-size: 11px;
-            color: #95a5a6;
+            color: #94a3b8;
             text-align: center;
-            margin-top: 12px;
+            margin-top: 15px;
         }
 
         #empty-notice {
             text-align: center;
-            padding: 50px 20px;
-            color: #7f8c8d;
+            padding: 60px 20px;
+            color: #64748b;
             background: #ffffff;
-            border-radius: 12px;
-            border: 2px dashed #dcdde1;
+            border-radius: 16px;
+            border: 2px dashed #cbd5e1;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -188,15 +291,14 @@
         </header>
 
         <div id="empty-notice">
-            <p><strong>Waiting for devices to report...</strong></p>
-            <p style="font-size: 13px; margin-top: 5px;">Power on your ESP32 boards. They will appear here automatically via Wildcard subscription.</p>
+            <p style="font-size: 16px;"><strong>Waiting for devices to report...</strong></p>
+            <p style="font-size: 13px; margin-top: 6px;">Power on your ESP32 boards. They will appear here automatically via Wildcard subscription.</p>
         </div>
 
         <div class="grid" id="devices-container"></div>
     </div>
 
     <script>
-        // Connect via WSS to VPS MQTT Broker
         const brokerUrl = "wss://iot.techknowlk.com:443";
         const options = {
             username: "esp_test_user",
@@ -210,37 +312,49 @@
         const devicesContainer = document.getElementById("devices-container");
         const emptyNotice = document.getElementById("empty-notice");
 
-        // Set to track discovered devices
-        const discoveredDevices = new Set();
+        // Keep state of devices: { [deviceId]: { temp, isLedOn, lastSeen } }
+        const devices = {};
 
         client.on("connect", () => {
             statusDot.className = "dot connected";
             statusText.innerText = "Connected to VPS Broker (wss)";
             
-            // Subscribe to all device telemetries using '+' wildcard
-            const wildcardTopic = "supun/esp32/+/telemetry";
-            client.subscribe(wildcardTopic, (err) => {
-                if (!err) {
-                    console.log("Subscribed to wildcard:", wildcardTopic);
-                }
-            });
+            // Subscribe to telemetry and state topics
+            client.subscribe("supun/esp32/+/telemetry");
+            client.subscribe("supun/esp32/+/state");
+            console.log("Subscribed to telemetry and state wildcards.");
         });
 
         client.on("message", (topic, payload) => {
-            // topic format: "supun/esp32/ESP32_XXXX/telemetry"
             const parts = topic.split("/");
-            if (parts.length >= 4 && parts[3] === "telemetry") {
-                const deviceId = parts[2];
-                let temperature = "--";
+            if (parts.length < 4) return;
 
+            const deviceId = parts[2];
+            const channel = parts[3];
+            const message = payload.toString().trim();
+
+            if (!devices[deviceId]) {
+                devices[deviceId] = { temp: "--", isLedOn: false, lastSeen: "" };
+                createDeviceCard(deviceId);
+            }
+
+            if (channel === "telemetry") {
                 try {
-                    const data = JSON.parse(payload.toString());
-                    temperature = data.temperature !== undefined ? data.temperature : "--";
+                    const data = JSON.parse(message);
+                    if (data.temperature !== undefined) {
+                        devices[deviceId].temp = data.temperature;
+                    }
+                    if (data.led !== undefined) {
+                        devices[deviceId].isLedOn = (data.led === "ON");
+                    }
                 } catch (e) {
-                    temperature = payload.toString();
+                    devices[deviceId].temp = message;
                 }
-
-                updateDeviceCard(deviceId, temperature);
+                updateCardVisuals(deviceId);
+            } 
+            else if (channel === "state") {
+                devices[deviceId].isLedOn = (message === "ON");
+                updateCardVisuals(deviceId);
             }
         });
 
@@ -250,43 +364,86 @@
             console.error("MQTT Error:", err);
         });
 
-        function updateDeviceCard(deviceId, temp) {
+        function createDeviceCard(deviceId) {
             emptyNotice.style.display = "none";
 
-            const now = new Date().toLocaleTimeString();
-
-            if (!discoveredDevices.has(deviceId)) {
-                discoveredDevices.add(deviceId);
-
-                const cardHtml = `
-                    <div class="card" id="card-${deviceId}">
-                        <div class="card-header">
-                            <span class="device-title">📟 ${deviceId}</span>
-                            <span class="badge">Online</span>
-                        </div>
-                        <div class="temp-display">
-                            <span class="temp-value" id="temp-${deviceId}">${temp}</span>
-                            <span class="temp-unit">°C</span>
-                        </div>
-                        <div class="actions">
-                            <button class="btn-on" onclick="sendDeviceCommand('${deviceId}', 'LED_ON')">LED ON</button>
-                            <button class="btn-off" onclick="sendDeviceCommand('${deviceId}', 'LED_OFF')">LED OFF</button>
-                        </div>
-                        <div class="last-seen">Last update: <span id="time-${deviceId}">${now}</span></div>
+            const cardHtml = `
+                <div class="card" id="card-${deviceId}">
+                    <div class="card-header">
+                        <span class="device-title">📟 ${deviceId}</span>
+                        <span class="badge">ONLINE</span>
                     </div>
-                `;
-                devicesContainer.insertAdjacentHTML("beforeend", cardHtml);
-            } else {
-                const tempEl = document.getElementById(`temp-${deviceId}`);
-                const timeEl = document.getElementById(`time-${deviceId}`);
-                if (tempEl) tempEl.innerText = temp;
-                if (timeEl) timeEl.innerText = now;
+
+                    <div class="visual-display">
+                        <div class="temp-section">
+                            <span class="temp-label">Temperature</span>
+                            <div class="temp-value-wrap">
+                                <span class="temp-value" id="temp-${deviceId}">--</span>
+                                <span class="temp-unit">°C</span>
+                            </div>
+                        </div>
+
+                        <div class="bulb-container">
+                            <div class="bulb-circle" id="bulb-${deviceId}">💡</div>
+                            <span class="bulb-pill" id="pill-${deviceId}">LED OFF</span>
+                        </div>
+                    </div>
+
+                    <div class="actions">
+                        <button class="btn-on" onclick="sendDeviceCommand('${deviceId}', 'LED_ON')">
+                            <span>Turn ON</span>
+                        </button>
+                        <button class="btn-off" onclick="sendDeviceCommand('${deviceId}', 'LED_OFF')">
+                            <span>Turn OFF</span>
+                        </button>
+                    </div>
+
+                    <div class="last-seen">Last update: <span id="time-${deviceId}">Just now</span></div>
+                </div>
+            `;
+            devicesContainer.insertAdjacentHTML("beforeend", cardHtml);
+        }
+
+        function updateCardVisuals(deviceId) {
+            const dev = devices[deviceId];
+            if (!dev) return;
+
+            dev.lastSeen = new Date().toLocaleTimeString();
+
+            // Update temperature
+            const tempEl = document.getElementById(`temp-${deviceId}`);
+            if (tempEl) tempEl.innerText = dev.temp;
+
+            // Update bulb glow and status text
+            const bulbEl = document.getElementById(`bulb-${deviceId}`);
+            const pillEl = document.getElementById(`pill-${deviceId}`);
+
+            if (bulbEl && pillEl) {
+                if (dev.isLedOn) {
+                    bulbEl.classList.add("is-on");
+                    pillEl.classList.add("is-on");
+                    pillEl.innerText = "LED ON";
+                } else {
+                    bulbEl.classList.remove("is-on");
+                    pillEl.classList.remove("is-on");
+                    pillEl.innerText = "LED OFF";
+                }
             }
+
+            // Update last seen
+            const timeEl = document.getElementById(`time-${deviceId}`);
+            if (timeEl) timeEl.innerText = dev.lastSeen;
         }
 
         function sendDeviceCommand(deviceId, command) {
             const topic = `supun/esp32/${deviceId}/command`;
             if (client.connected) {
+                // Optimistic instant UI update
+                if (devices[deviceId]) {
+                    devices[deviceId].isLedOn = (command === "LED_ON");
+                    updateCardVisuals(deviceId);
+                }
+
                 client.publish(topic, command);
                 console.log(`[${deviceId}] Command sent -> ${topic} : ${command}`);
             } else {
