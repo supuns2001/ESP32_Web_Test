@@ -2,7 +2,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 
-// Onboard LED pin (GPIO 2 on most ESP32 Dev Modules)
+// Onboard / External LED pin (GPIO 2)
 #define LED_PIN 2
 
 // WiFi credentials
@@ -19,6 +19,10 @@ const char* mqtt_pass = "Supun@2001";
 String deviceId;
 String telemetryTopic;
 String commandTopic;
+String stateTopic;
+
+// Track real physical LED state
+bool ledState = false;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -34,13 +38,17 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.print("] Command received: ");
     Serial.println(command);
 
-    // Physical LED control
+    // Physical LED control & Instant State Feedback
     if (command == "LED_ON") {
         digitalWrite(LED_PIN, HIGH);
-        Serial.println(">> LED is ON");
+        ledState = true;
+        client.publish(stateTopic.c_str(), "ON", true); // retained state
+        Serial.println(">> LED is ON (State reported: ON)");
     } else if (command == "LED_OFF") {
         digitalWrite(LED_PIN, LOW);
-        Serial.println(">> LED is OFF");
+        ledState = false;
+        client.publish(stateTopic.c_str(), "OFF", true); // retained state
+        Serial.println(">> LED is OFF (State reported: OFF)");
     }
 }
 
@@ -67,6 +75,9 @@ void reconnectMQTT() {
             client.subscribe(commandTopic.c_str());
             Serial.print("Subscribed to: ");
             Serial.println(commandTopic);
+
+            // Report initial state on connection
+            client.publish(stateTopic.c_str(), ledState ? "ON" : "OFF", true);
         } else {
             Serial.print("Failed, rc=");
             Serial.print(client.state());
@@ -80,11 +91,12 @@ void setup() {
     Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
+    ledState = false;
 
     // Read full 64-bit hardware MAC (efuse)
     uint64_t chipMac = ESP.getEfuseMac();
 
-    // Format full 12-character MAC hex string (e.g. D83A3425BF58 vs DC2F3425BF58)
+    // Format full 12-character MAC hex string
     char fullMacId[13];
     snprintf(fullMacId, sizeof(fullMacId), "%04X%08X", (uint16_t)(chipMac >> 32), (uint32_t)chipMac);
 
@@ -93,6 +105,7 @@ void setup() {
     // Dynamically generate topics
     telemetryTopic = "supun/esp32/" + deviceId + "/telemetry";
     commandTopic   = "supun/esp32/" + deviceId + "/command";
+    stateTopic     = "supun/esp32/" + deviceId + "/state";
 
     Serial.println("\n==================================");
     Serial.print("Device Initialized: ");
@@ -101,6 +114,8 @@ void setup() {
     Serial.println(telemetryTopic);
     Serial.print("Command Topic:     ");
     Serial.println(commandTopic);
+    Serial.print("State Topic:       ");
+    Serial.println(stateTopic);
     Serial.println("==================================\n");
 
     connectWiFi();
@@ -118,10 +133,14 @@ void loop() {
     if (millis() - lastSend > 5000) {
         lastSend = millis();
 
-        // Slightly varying simulated temperature (25.0 - 32.0 C)
+        // Simulated temperature
         float mockTemp = 26.0 + (random(0, 60) / 10.0);
         
-        String message = "{\"deviceId\":\"" + deviceId + "\",\"temperature\":" + String(mockTemp, 1) + "}";
+        // Include both temperature and current real LED state in telemetry
+        String message = "{\"deviceId\":\"" + deviceId + 
+                         "\",\"temperature\":" + String(mockTemp, 1) + 
+                         ",\"led\":\"" + (ledState ? "ON" : "OFF") + "\"}";
+                         
         client.publish(telemetryTopic.c_str(), message.c_str());
         
         Serial.print("[");
